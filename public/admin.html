@@ -1,0 +1,76 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Luwingu Rider - Admin</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><link rel="stylesheet" href="/style.css"></head><body>
+<header><b>Luwingu Rider: Admin</b><a href="#" id="out" class="hide">Log out</a></header>
+<main class="wide">
+<section id="auth" class="card"><h2>Admin login</h2><label for="pw">Password</label><input id="pw" type="password">
+<p class="msg" id="err" role="alert"></p><button id="login">Log in</button></section>
+<section id="dash" class="hide">
+<h2>Drivers</h2><label for="dfilter">Show district</label><select id="dfilter" style="max-width:260px"><option value="">All districts</option></select><div class="card scroll" style="margin-top:10px"><table><thead><tr><th>Name</th><th>Phone</th><th>Vehicle</th><th>District</th><th>Plate</th><th>Licence</th><th>Status</th><th>Actions</th></tr></thead><tbody id="drivers"></tbody></table></div>
+<section id="ph" class="hide"><h2 id="pht"></h2><div class="card" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start"><figure style="margin:0"><img id="img-passport" alt="Passport-size photo" style="max-width:220px;width:100%;border-radius:6px"><figcaption class="mute">Passport-size photo</figcaption></figure><figure style="margin:0"><img id="img-bike" alt="Motorbike" style="max-width:360px;width:100%;border-radius:6px"><figcaption class="mute">Motorbike</figcaption></figure><button class="alt sm" id="phx" type="button">Close</button></div></section>
+<section id="trips" class="hide"><h2 id="th"></h2><p class="mute" id="ts"></p><div id="tmap" role="application" aria-label="Map of this driver's trips"></div><div id="tl" style="margin-top:10px"></div></section>
+<h2>Rides</h2><p class="mute" id="stats"></p><div class="card scroll"><table><thead><tr><th>Time</th><th>Passenger</th><th>Route</th><th>Fare</th><th>Payment</th><th>Driver</th><th>Status</th></tr></thead><tbody id="rides"></tbody></table></div>
+</section></main><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="/app.js"></script><script>
+let tok=sessionStorage.getItem('at'),timer;
+$('#login').onclick=async()=>{try{const r=await api('/api/admin/login',{password:$('#pw').value});tok=r.token;sessionStorage.setItem('at',tok);start()}catch(e){$('#err').textContent=e.message}};
+$('#out').onclick=e=>{e.preventDefault();sessionStorage.clear();location.reload()};
+const row=(...c)=>{const t=el('tr');c.forEach(x=>{const d=el('td');typeof x==='string'?d.textContent=x:d.append(x);t.append(d)});return t};
+const tag=s=>el('span',s,'tag '+s);
+function act(label,url,cls){const b=el('button',label,'sm '+cls);b.onclick=async()=>{if(label==='Delete'&&!confirm('Delete this driver?'))return;await api(url,{},tok);load()};return b}
+async function showPhotos(x){$('#ph').classList.remove('hide');$('#pht').textContent='Photos of '+x.name;
+  for(const k of ['passport','bike']){const i=$('#img-'+k);i.removeAttribute('src');try{i.src=(await api('/api/admin/drivers/'+x.id+'/photo/'+k,undefined,tok)).image}catch{i.alt='Could not load this picture'}}
+  $('#ph').scrollIntoView({behavior:'smooth'})}
+$('#phx').onclick=()=>$('#ph').classList.add('hide');
+let map,layer,selD=null,sig='',lastD=null,routes={};
+function initMap(){if(map)return;if(!window.L){$('#tmap').textContent='The map needs an internet connection.';return}
+  map=L.map('tmap').setView([-10.2667,29.9167],13);
+  baseMap(map);layer=L.layerGroup().addTo(map)}
+const hasPin=r=>r.pLat!=null&&r.dLat!=null;
+function showTrips(d,force,fit){
+  const dr=d.drivers.find(x=>x.id===selD);
+  if(!dr){selD=null;$('#trips').classList.add('hide');return}
+  const trips=d.rides.filter(r=>r.driverId===selD&&(r.status==='accepted'||r.status==='completed')).slice(0,20);
+  const s=trips.map(r=>r.id+r.status).join();
+  if(!force&&s===sig)return;sig=s;
+  const done=trips.filter(r=>r.status==='completed');
+  $('#th').textContent='Trips of '+dr.name;
+  $('#ts').textContent=trips.length+' trips shown (latest 20), '+done.length+' completed, K'+done.reduce((a,r)=>a+(r.fare||0),0)+' in completed fares';
+  $('#tl').replaceChildren(...(trips.length?trips.map((r,i)=>{const b=el('button',(i+1)+'. '+r.pickup+' to '+r.dropoff+' | '+(r.fare!=null?'K'+r.fare:'no fare')+' | '+(PAYL[r.payment]||'-')+' | '+r.status,'sm alt');b.style.display='block';b.style.textAlign='left';
+    b.onclick=()=>{if(map&&hasPin(r))map.fitBounds([[r.pLat,r.pLng],[r.dLat,r.dLng]],{padding:[40,40],maxZoom:16})};return b}):[el('p','No trips for this driver yet.','mute')]));
+  if(!map)return;layer.clearLayers();const all=[];
+  trips.forEach((r,i)=>{if(!hasPin(r))return;const a=[r.pLat,r.pLng],b=[r.dLat,r.dLng];all.push(a,b);const g=routes[r.id];
+    L.polyline(g||[a,b],g?{color:'#0f5a3a',weight:4,opacity:.8}:{color:'#0f5a3a',weight:2,dashArray:'6'}).addTo(layer);
+    L.circleMarker(a,{radius:8,color:'#fff',weight:3,fillColor:'#0f5a3a',fillOpacity:1}).bindTooltip('Trip '+(i+1)+' pickup').addTo(layer);
+    L.circleMarker(b,{radius:8,color:'#fff',weight:3,fillColor:'#e0a800',fillOpacity:1}).bindTooltip('Trip '+(i+1)+' destination').addTo(layer);
+    if(!(r.id in routes)){routes[r.id]=null;
+      fetch('https://router.project-osrm.org/route/v1/driving/'+r.pLng+','+r.pLat+';'+r.dLng+','+r.dLat+'?overview=full&geometries=geojson').then(x=>x.json()).then(j=>{
+        if(j.routes&&j.routes[0]){routes[r.id]=j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);if(selD&&lastD)showTrips(lastD,true,false)}}).catch(()=>{})}});
+  if(fit&&all.length)map.fitBounds(all,{padding:[40,40],maxZoom:16})}
+const NO_D='No district';
+function groupByDistrict(drivers,filter){const g={};for(const x of drivers)(g[x.district||NO_D]=g[x.district||NO_D]||[]).push(x);
+  return Object.keys(g).filter(n=>!filter||n===filter).sort((a,b)=>a===NO_D?1:b===NO_D?-1:a.localeCompare(b)).map(n=>({name:n,list:g[n]}))}
+let mkRowRef=null;
+function drawDrivers(drivers,mkRow){ // drivers grouped by district, with a filter
+  const f=$('#dfilter'),cur=f.value,names=groupByDistrict(drivers,'').map(g=>g.name);
+  if(f.options.length-1!==names.length||names.some((n,i)=>f.options[i+1].value!==n)){f.replaceChildren(new Option('All districts',''),...names.map(n=>new Option(n,n)));f.value=names.includes(cur)?cur:''}
+  const rows=[];
+  for(const g of groupByDistrict(drivers,f.value)){
+    const t=el('tr'),td=el('td',g.name+': '+g.list.length+' driver'+(g.list.length>1?'s':'')+' ('+g.list.filter(x=>x.status==='approved').length+' approved, '+g.list.filter(x=>x.status==='pending').length+' pending)');
+    td.colSpan=8;td.style.cssText='font-weight:700;background:#e6ece8';t.append(td);rows.push(t,...g.list.map(mkRow))}
+  $('#drivers').replaceChildren(...rows)}
+$('#dfilter').onchange=()=>{if(lastD&&mkRowRef)drawDrivers(lastD.drivers,mkRowRef)};
+async function load(){
+  try{const d=await api('/api/admin/data',undefined,tok);lastD=d;
+    const mkRow=x=>{const a=el('div');const u='/api/admin/drivers/'+x.id+'/';
+      const v=el('button','View trips','sm alt');v.onclick=()=>{selD=x.id;sig='';$('#trips').classList.remove('hide');initMap();if(map)map.invalidateSize();showTrips(lastD,true,true);$('#trips').scrollIntoView({behavior:'smooth'})};a.append(v);if(x.photos){const pb=el('button','View photos','sm alt');pb.onclick=()=>showPhotos(x);a.append(pb)}
+      if(x.status!=='approved')a.append(act('Approve',u+'approve',''));if(x.status==='pending')a.append(act('Reject',u+'reject','alt'));a.append(act('Delete',u+'delete','bad'));
+      return row(x.name,x.phone,x.vehicle,x.district||'-',x.plate,x.license,tag(x.status),a)};
+    mkRowRef=mkRow;drawDrivers(d.drivers,mkRow);
+    $('#rides').replaceChildren(...d.rides.map(r=>row(when(r.created),r.name+' '+r.phone,r.pickup+' to '+r.dropoff,r.fare!=null?'K'+r.fare:'-',PAYL[r.payment]||'-',r.driver?r.driver.name:'-',tag(r.status))));
+    $('#stats').textContent=d.rides.length+' rides, '+d.rides.filter(r=>r.status==='completed').length+' completed, '+d.drivers.filter(x=>x.status==='pending').length+' drivers waiting for approval';
+    if(selD)showTrips(d,false,false);
+  }catch(e){if(e.status===401){sessionStorage.clear();location.reload()}}
+  clearTimeout(timer);timer=setTimeout(load,5000);
+}
+function start(){$('#auth').classList.add('hide');$('#dash').classList.remove('hide');$('#out').classList.remove('hide');load()}
+if(tok)start();
+</script></body></html>

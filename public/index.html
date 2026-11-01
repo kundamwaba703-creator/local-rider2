@@ -1,0 +1,71 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Luwingu Rider</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><link rel="stylesheet" href="/style.css"></head><body>
+<header><b>Luwingu Rider</b><span><a href="/driver">Drivers</a></span></header>
+<main>
+<section id="form" class="card"><h2>Where do you need to go?</h2>
+<div id="dwrap"><label for="dist">District</label><select id="dist"></select><p class="mute" id="dnote" role="status"></p></div>
+<label for="name">Your name</label><input id="name" autocomplete="name">
+<label for="phone">Phone number</label><input id="phone" type="tel" autocomplete="tel">
+<div class="row" style="margin-top:12px"><button class="sm on" id="mp" type="button">Set pickup</button><button class="sm alt" id="md" type="button">Set destination</button><button class="sm alt" id="loc" type="button">Use my location</button></div>
+<p class="mute" id="hint"></p><div id="map" role="application" aria-label="Map of Luwingu"></div>
+<label for="pickup">Pickup place</label><input id="pickup" placeholder="Tap the map or type a place name">
+<label for="dropoff">Destination</label><input id="dropoff" placeholder="Tap the map or type a place name">
+<fieldset class="pay"><legend>How will you pay?</legend><label><input type="radio" name="pay" value="cash">Cash on arrival</label><label><input type="radio" name="pay" value="airtel">Airtel Money</label><label><input type="radio" name="pay" value="mtn">MTN MoMo</label><label><input type="radio" name="pay" value="zamtel">Zamtel Money</label></fieldset>
+<p class="ok" id="fare"></p><p class="msg" id="err" role="alert"></p><button id="go">Request a ride</button></section>
+<section id="status" class="card hide"><h2>Your ride</h2><div id="info"></div><button class="alt" id="cancel">Cancel ride</button> <button id="again" class="hide">Request another ride</button></section>
+</main><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script src="/app.js"></script><script src="/districts.js"></script><script>
+let rid=localStorage.getItem('rideId'),timer,map,mode='p',pts={},mk={};
+const COL={p:'#0f5a3a',d:'#e0a800'}, F={p:'#pickup',d:'#dropoff'};
+function setMode(m){mode=m;$('#mp').classList.toggle('on',m==='p');$('#md').classList.toggle('on',m==='d');$('#mp').classList.toggle('alt',m!=='p');$('#md').classList.toggle('alt',m!=='d');
+  $('#hint').textContent=m==='p'?'Tap the map where we should pick you up.':'Tap the map where you are going.'}
+function setPt(m,ll){pts[m]=ll;if(mk[m])mk[m].setLatLng(ll);else mk[m]=L.circleMarker(ll,{radius:10,color:'#fff',weight:3,fillColor:COL[m],fillOpacity:1}).addTo(map);
+  const f=$(F[m]);if(!f.value||f.dataset.auto){f.value='Pinned on map';f.dataset.auto=1}fare();route()}
+if(window.L){
+  map=L.map('map').setView([-10.2667,29.9167],14); // Luwingu, Northern Province, Zambia
+  baseMap(map);
+  map.on('click',e=>{setPt(mode,e.latlng);if(mode==='p')setMode('d')});
+  $('#mp').onclick=()=>setMode('p');$('#md').onclick=()=>setMode('d');
+  $('#loc').onclick=()=>navigator.geolocation?navigator.geolocation.getCurrentPosition(p=>{const ll=L.latLng(p.coords.latitude,p.coords.longitude);setPt('p',ll);map.setView(ll,16);setMode('d')},()=>{$('#err').textContent='Could not get your location. Tap the map instead.'}):0;
+  setMode('p');districtPicker($('#dist'),map);
+}else{$('#dwrap').hidden=true;$('#map').textContent='The map needs an internet connection. You can still type your places.';$('#hint').textContent='';}
+['p','d'].forEach(m=>$(F[m]).addEventListener('input',e=>delete e.target.dataset.auto));
+let perKm=10;api('/api/config').then(c=>{perKm=c.perKm;fare()}).catch(()=>{});
+let rline=null,rseq=0; // line joining pickup and destination: road route, or a dashed straight line until it loads
+function route(){
+  if(rline){rline.remove();rline=null}
+  if(!(map&&pts.p&&pts.d))return;
+  const t=++rseq,a=[pts.p.lat,pts.p.lng],b=[pts.d.lat,pts.d.lng];
+  rline=L.polyline([a,b],{color:'#0F5A3A',weight:2,dashArray:'6'}).addTo(map);rline.bringToBack();
+  fetch('https://router.project-osrm.org/route/v1/driving/'+a[1]+','+a[0]+';'+b[1]+','+b[0]+'?overview=full&geometries=geojson').then(x=>x.json()).then(j=>{
+    if(t!==rseq||!j.routes||!j.routes[0])return;
+    rline.remove();rline=L.polyline(j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]),{color:'#0F5A3A',weight:5,opacity:.85}).addTo(map);rline.bringToBack()}).catch(()=>{})}
+let fseq=0;
+function fare(){const e=$('#fare');if(!(pts.p&&pts.d)){e.textContent=pts.p?'Set your destination on the map to see the fare.':'';return}
+  const t=++fseq;e.textContent='Working out the fare...';
+  api('/api/fare?pLat='+pts.p.lat+'&pLng='+pts.p.lng+'&dLat='+pts.d.lat+'&dLng='+pts.d.lng).then(f=>{if(t===fseq)e.textContent='About '+f.km+' km '+(f.road?'by road':'in a straight line')+', fare K'+f.fare+' (K'+f.perKm+' per km)'}).catch(()=>{if(t===fseq)e.textContent=''})}
+const PH={}; // driver pictures already requested (kept so the page does not reload them every few seconds)
+function photoBox(r){const w=el('div');w.style.cssText='display:flex;gap:12px;flex-wrap:wrap;margin:10px 0';
+  for(const [k,label,max] of [['passport','Driver',140],['bike','Motorbike',220]]){
+    const f=el('figure'),im=document.createElement('img'),key=r.id+k;f.style.margin='0';im.alt=label+' picture';im.style.cssText='max-width:'+max+'px;width:100%;border-radius:6px';
+    (PH[key]=PH[key]||api('/api/rides/'+r.id+'/photo/'+k).then(x=>x.image)).then(s=>{im.src=s}).catch(()=>{delete PH[key];im.alt='Picture not available'});
+    f.append(im,el('figcaption',label,'mute'));w.append(f)}
+  return w}
+async function show(){
+  try{const r=await api('/api/rides/'+rid);$('#form').classList.add('hide');$('#status').classList.remove('hide');
+    const i=$('#info');i.replaceChildren(el('p',r.pickup+' to '+r.dropoff),el('span',r.status==='pending'?'Looking for a driver':r.status==='accepted'?'Driver on the way':r.status==='completed'?'Trip complete':'Cancelled','tag '+r.status));
+    if(r.fare!=null)i.append(el('p','Fare: K'+r.fare+' ('+r.km+' km)','ok'));if(r.payment)i.append(el('p','Payment: '+PAYL[r.payment]));if(r.driver){i.append(el('p','Driver: '+r.driver.name+' ('+r.driver.phone+')'),el('p',r.driver.vehicle+', plate '+r.driver.plate));if(r.driver.photos&&r.status==='accepted')i.append(photoBox(r))}
+    const open=r.status==='pending'||r.status==='accepted';$('#cancel').classList.toggle('hide',!open);$('#again').classList.toggle('hide',open);
+    clearTimeout(timer);if(open)timer=setTimeout(show,4000);
+  }catch{localStorage.removeItem('rideId')}
+}
+$('#go').onclick=async()=>{
+  if(map&&!pts.p){$('#err').textContent='Tap the map to set your pickup point.';return}
+  const pay=document.querySelector('input[name=pay]:checked');if(!pay){$('#err').textContent='Choose how you will pay.';return}
+  const ll=m=>pts[m]?{lat:pts[m].lat,lng:pts[m].lng}:{};
+  try{const r=await api('/api/rides',{name:$('#name').value,phone:$('#phone').value,pickup:$('#pickup').value,dropoff:$('#dropoff').value,pLat:ll('p').lat,pLng:ll('p').lng,dLat:ll('d').lat,dLng:ll('d').lng,payment:pay.value,district:districtName($('#dist').value)});
+    rid=r.id;localStorage.setItem('rideId',rid);$('#err').textContent='';show()}catch(e){$('#err').textContent=e.message}};
+$('#cancel').onclick=async()=>{await api('/api/rides/'+rid+'/cancel',{});show()};
+$('#again').onclick=()=>{localStorage.removeItem('rideId');$('#status').classList.add('hide');$('#form').classList.remove('hide');
+  Object.values(mk).forEach(m=>m.remove());mk={};pts={};fare();route();['p','d'].forEach(m=>{$(F[m]).value=''});if(map){map.invalidateSize();setMode('p')}};
+if(rid)show();
+</script></body></html>

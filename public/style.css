@@ -1,0 +1,21 @@
+:root{--g:#0f5a3a;--y:#ffc21a;--bg:#f3f6f1;--ink:#14231b;--mute:#5b6b61;--line:#d5ded7;--red:#b3261e}
+*{box-sizing:border-box}body{margin:0;font:16px/1.5 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--g);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;border-bottom:5px solid var(--y)}
+header b{font-size:1.2rem}header a{color:#fff;margin-left:14px;font-size:.95rem}
+main{max-width:640px;margin:0 auto;padding:18px}.wide{max-width:980px}
+h2{margin:.2em 0 .6em}.card{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:14px}
+label{display:block;font-weight:600;margin:10px 0 4px}input{width:100%;padding:11px;border:1px solid var(--line);border-radius:6px;font:inherit}
+input:focus,button:focus-visible{outline:3px solid var(--y)}
+button{background:var(--g);color:#fff;border:0;border-radius:6px;padding:11px 18px;font:inherit;font-weight:600;cursor:pointer;margin-top:12px}
+button.alt{background:#fff;color:var(--g);border:1px solid var(--g)}button.bad{background:var(--red)}button.sm{padding:6px 12px;margin:4px 6px 0 0}
+.msg{color:var(--red);min-height:1.4em}.ok{color:var(--g);font-weight:600}.mute{color:var(--mute);font-size:.9rem}
+.tag{display:inline-block;padding:2px 10px;border-radius:99px;font-size:.85rem;font-weight:600;background:#e6ece8}
+.pending{background:#fff1c2}.accepted,.approved,.completed{background:#cdeedb}.cancelled,.rejected{background:#f6d5d2}
+table{width:100%;border-collapse:collapse;font-size:.92rem}td,th{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
+.scroll{overflow-x:auto}.hide{display:none}
+#map{height:320px;border-radius:8px;border:1px solid var(--line);margin-top:10px;background:#e6ece8}
+button.on{background:var(--y);color:var(--ink);border-color:var(--y)}.row{display:flex;gap:8px;flex-wrap:wrap}
+#tmap{height:340px;border-radius:8px;border:1px solid var(--line);margin-top:10px;background:#e6ece8}
+fieldset.pay{border:1px solid var(--line);border-radius:6px;margin-top:12px;padding:6px 12px 10px}.pay legend{font-weight:600;padding:0 6px}.pay label{font-weight:400;margin:8px 0}.pay input{width:auto;padding:0;margin-right:8px}
+select{width:100%;padding:11px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff}
+.alert{background:#FFC21A;color:#14231B;font-weight:700;padding:12px;border-radius:6px}
